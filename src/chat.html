@@ -1,0 +1,514 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZeroTrust Share</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #F3F8FF; font-family: 'Inter', sans-serif; }
+        .brand-blue-bg { background-color: #2D8CFF; }
+        .brand-blue-bg:hover { background-color: #1E78E6; }
+        .brand-light-blue-bg { background-color: #EBF5FF; }
+        .chat-bubble-sent { background-color: #2D8CFF; color: white; }
+        .chat-bubble-received { background-color: #E5E7EB; color: #1F2937; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .floating-compose-btn { position: absolute; bottom: 1.5rem; right: 1.5rem; width: 3.5rem; height: 3.5rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); transition: all 0.2s ease-in-out; z-index: 40; }
+        .floating-compose-btn:hover { transform: scale(1.05); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); }
+        .floating-compose-btn.rotate-45 { transform: rotate(45deg); }
+        .floating-compose-btn.rotate-45:hover { transform: rotate(45deg) scale(1.05); }
+        .compose-modal { position: absolute; bottom: 0; right: 2rem; width: 480px; height: 500px; background-color: white; border-radius: 0.75rem 0.75rem 0 0; box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; z-index: 50; transform: translateY(110%); transition: transform 0.3s ease-out; }
+        .compose-modal.is-open { transform: translateY(0); }
+        .spinner { border: 2px solid #f3f3f3; border-top: 2px solid #2D8CFF; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .chat-input-bar { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid #ddd; }
+        .attach-btn { font-size: 20px; background: none; border: none; cursor: pointer; }
+        .file-preview { padding: 8px; font-size: 14px; background: #f1f1f1; margin: 5px 10px; border-radius: 6px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="h-screen antialiased text-gray-800 overflow-hidden">
+    <div id="app" class="h-full flex">
+        <aside class="w-1/3 h-full flex flex-col border-r border-gray-200 bg-white relative">
+            <header class="p-4 border-b border-gray-200 flex-shrink-0">
+                <h1 class="text-xl font-bold text-gray-800">Conversations</h1>
+                <div class="flex items-center gap-2">
+                    <p id="currentUserEmail" class="text-sm text-gray-500"></p>
+                    <a href="/logout" class="text-xs text-red-500 hover:underline">[Logout]</a>
+                </div>
+            </header>
+            <div class="p-4 flex-shrink-0">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="searchConversations" placeholder="Search by email..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                </div>
+            </div>
+            <nav id="conversationList" class="flex-1 overflow-y-auto no-scrollbar p-2 space-y-1"></nav>
+            <button id="floatingComposeBtn" class="floating-compose-btn brand-blue-bg text-white" title="New Message">
+                <i id="composeBtnIcon" class="fas fa-plus text-xl transition-transform duration-300"></i>
+            </button>
+        </aside>
+
+        <main class="w-2/3 h-full flex flex-col bg-gray-50 relative">
+            <div id="welcomeView" class="flex-1 flex flex-col items-center justify-center text-center">
+                <i class="fas fa-comments fa-4x text-gray-300"></i>
+                <h2 class="mt-4 text-2xl font-semibold text-gray-700">Welcome to ZeroTrust Share</h2>
+                <p class="mt-2 text-gray-500">Select a conversation or start a new message.</p>
+            </div>
+            
+            <div id="conversationView" class="hidden flex-1 flex flex-col">
+                <header class="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+                    <h2 id="conversationHeader" class="text-lg font-semibold text-gray-800"></h2>
+                    <span class="text-sm text-gray-500"><i class="fas fa-lock text-green-500 mr-1"></i> Secure Conversation</span>
+                </header>
+                <div id="messagesContainer" class="flex-1 p-6 overflow-y-auto no-scrollbar flex flex-col space-y-4"></div>
+                <!-- File Preview -->
+                <div id="filePreview" class="file-preview hidden"></div>
+                <footer class="p-4 bg-white border-t border-gray-200">
+                    <!-- Chat Input Bar -->
+                    <div class="chat-input-bar">
+                      <!-- Attach Button -->
+                      <button id="attachBtn" type="button" class="attach-btn" title="Attach file">
+                        📎
+                      </button>
+
+                      <!-- Hidden File Input -->
+                      <input
+                        type="file"
+                        id="fileInput"
+                        accept="image/png,image/jpeg,image/webp,application/pdf"
+                        hidden
+                      />
+
+                      <!-- Message Input -->
+                      <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Type your message…"
+                        class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+
+                      <!-- Send Button -->
+                      <button id="sendBtn" type="button" class="ml-4 brand-blue-bg text-white rounded-full w-10 h-10 flex items-center justify-center transition-colors flex-shrink-0">➤</button>
+                    </div>
+                </footer>
+            </div>
+
+            <div id="composeModal" class="compose-modal">
+                <header class="flex items-center justify-between p-3 bg-gray-700 text-white rounded-t-lg flex-shrink-0">
+                    <h2 class="font-semibold">New Message</h2>
+                    <button id="closeComposeBtn" class="w-8 h-8 rounded-full hover:bg-gray-600 flex items-center justify-center text-2xl">&times;</button>
+                </header>
+                <div class="p-4 flex flex-col flex-1">
+                    <div id="composeError" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert"></div>
+                    <div class="mb-4">
+                        <label for="recipientEmail" class="sr-only">To:</label>
+                        <input type="email" id="recipientEmail" placeholder="To: recipient@example.com" class="w-full px-3 py-2 text-sm bg-white border-b border-gray-300 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div class="flex-1 mb-4">
+                        <label for="composeMessage" class="sr-only">Message:</label>
+                        <textarea id="composeMessage" placeholder="Type your secure message here..." class="w-full h-full text-sm p-3 bg-white focus:outline-none resize-none"></textarea>
+                    </div>
+                    <div class="flex justify-end">
+                        <button id="sendMessageBtn" class="brand-blue-bg text-white font-semibold py-2 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                            <span id="sendBtnText">Send</span>
+                            <div id="sendBtnSpinner" class="spinner hidden"></div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    let currentUser = null;
+    let conversations = [];
+    let activeConversationId = null; // Renamed from selectedConversation
+    let pollingInterval = null;
+    let selectedFile = null;
+
+    const ui = {
+        welcomeView: document.getElementById('welcomeView'),
+        conversationView: document.getElementById('conversationView'),
+        composeModal: document.getElementById('composeModal'),
+        conversationList: document.getElementById('conversationList'),
+        messagesContainer: document.getElementById('messagesContainer'),
+        conversationHeader: document.getElementById('conversationHeader'),
+        messageInput: document.getElementById('messageInput'),
+        currentUserEmail: document.getElementById('currentUserEmail'),
+        floatingComposeBtn: document.getElementById('floatingComposeBtn'),
+        composeBtnIcon: document.getElementById('composeBtnIcon'),
+        closeComposeBtn: document.getElementById('closeComposeBtn'),
+        sendMessageBtn: document.getElementById('sendMessageBtn'),
+        recipientEmail: document.getElementById('recipientEmail'),
+        composeMessage: document.getElementById('composeMessage'),
+        sendBtnText: document.getElementById('sendBtnText'),
+        sendBtnSpinner: document.getElementById('sendBtnSpinner'),
+        composeError: document.getElementById('composeError'),
+        sendBtn: document.getElementById('sendBtn'), // Renamed from replyBtn
+        searchInput: document.getElementById('searchConversations'),
+        attachBtn: document.getElementById('attachBtn'),
+        fileInput: document.getElementById('fileInput'),
+        filePreview: document.getElementById('filePreview')
+    };
+
+    async function api(url, options = {}) {
+        // FIX: Add credentials to ensure session cookies are sent
+        const fetchOptions = {
+            credentials: "same-origin",
+            ...options,
+        };
+        
+        const response = await fetch(url, fetchOptions);
+        // The original code had a specific check for FormData that caused issues.
+        // We will now handle all responses more uniformly.
+        const text = await response.text();
+        let data;
+
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            // If it's not JSON, but the response was OK, return empty object or text.
+            // For this project, non-JSON for successful responses is unexpected,
+            // so we'll treat it as an error as before.
+            console.error("Server returned non-JSON response:", text);
+            throw new Error("The server sent an unexpected response. Please check the console for details.");
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || `Request failed with status ${response.status}`);
+        }
+        
+        return data;
+    }
+
+    async function initialize() {
+        try {
+            currentUser = await api('/api/me');
+            ui.currentUserEmail.textContent = currentUser.email;
+            setupEventListeners();
+            await refreshConversations();
+            startPolling();
+        } catch (error) {
+            console.error("Initialization failed:", error);
+            if (error.message.includes("Unauthorized")) window.location.href = '/';
+        }
+    }
+
+    function setupEventListeners() {
+        ui.floatingComposeBtn.addEventListener('click', toggleComposeView);
+        ui.closeComposeBtn.addEventListener('click', () => hideComposeView());
+        ui.sendMessageBtn.addEventListener('click', handleComposeAndSend);
+        ui.sendBtn.addEventListener('click', handleSendClick); // Updated to new send logic
+
+        ui.messageInput.addEventListener('keypress', (e) => { 
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendClick(); }
+        });
+        ui.searchInput.addEventListener('input', (e) => renderConversations(e.target.value.toLowerCase()));
+        ui.recipientEmail.addEventListener('input', validateComposeForm);
+        ui.composeMessage.addEventListener('input', validateComposeForm);
+        ui.attachBtn.addEventListener("click", () => ui.fileInput.click());
+        ui.fileInput.addEventListener("change", handleFileSelection);
+    }
+
+    // Handle file selection
+    function handleFileSelection() {
+        const file = ui.fileInput.files[0];
+        if (!file) return;
+
+        const allowed = [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "application/pdf"
+        ];
+
+        if (!allowed.includes(file.type)) {
+            alert("Only images and PDFs are allowed");
+            ui.fileInput.value = "";
+            return;
+        }
+
+        selectedFile = file;
+        ui.filePreview.innerHTML = `📎 ${file.name}`;
+        ui.filePreview.classList.remove("hidden");
+    }
+
+    function startPolling() {
+        if (pollingInterval) clearInterval(pollingInterval);
+        pollingInterval = setInterval(async () => {
+            await refreshConversations();
+            if (activeConversationId) {
+                await refreshMessagesForSelectedConversation(false); 
+            }
+        }, 5000);
+    }
+
+    async function refreshConversations() {
+        try {
+            conversations = await api('/api/conversations');
+            renderConversations(ui.searchInput.value.toLowerCase());
+        } catch (error) {
+            console.error("Error refreshing conversations:", error.message);
+        }
+    }
+
+    async function refreshMessagesForSelectedConversation(switchViewOnSuccess = true) {
+        if (!activeConversationId) return;
+        try {
+            const messages = await api(`/api/messages/${activeConversationId}`);
+            renderMessages(messages);
+            if (switchViewOnSuccess) switchView('conversationView');
+        } catch (error) {
+            console.error("Error refreshing messages:", error.message);
+        }
+    }
+
+    function switchView(viewName) {
+        ui.welcomeView.classList.add('hidden');
+        ui.conversationView.classList.add('hidden');
+        if (ui[viewName]) ui[viewName].classList.remove('hidden');
+    }
+
+    function renderConversations(filter = '') {
+        ui.conversationList.innerHTML = '';
+        const filtered = conversations.filter(c => c.other_user_email.toLowerCase().includes(filter));
+
+        if (filtered.length === 0) {
+            ui.conversationList.innerHTML = `<p class="text-center text-gray-500 p-4">${filter ? 'No matches found' : 'No conversations yet'}</p>`;
+        } else {
+             filtered.forEach(convo => {
+                const el = createConvoElement(convo);
+                ui.conversationList.appendChild(el);
+            });
+        }
+    }
+
+    function createConvoElement(convo) {
+        const el = document.createElement('div');
+        const isSelected = activeConversationId === convo.id; // Updated from selectedConversation
+        el.className = `p-3 flex items-center rounded-lg cursor-pointer hover:bg-gray-100 transition-colors ${isSelected ? 'brand-light-blue-bg' : ''}`;
+        
+        const avatar = `<div class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold mr-3 flex-shrink-0">${convo.other_user_email.charAt(0).toUpperCase()}</div>`;
+        const youPrefix = convo.last_message_sender_id === currentUser.id ? "<span class='font-normal'>You: </span>" : "";
+        const content = `<div class="flex-1 overflow-hidden"><p class="font-semibold text-gray-800 truncate">${escapeHtml(convo.other_user_email)}</p><p class="text-sm text-gray-500 truncate">${youPrefix}${escapeHtml(convo.last_message)}</p></div>`;
+        const timestamp = `<div class="text-xs text-gray-400 ml-2">${formatTimestamp(convo.timestamp)}</div>`;
+
+        el.innerHTML = avatar + content + timestamp;
+        el.addEventListener('click', () => handleConversationSelect(convo));
+        return el;
+    }
+
+    function renderMessages(messages) {
+        ui.messagesContainer.innerHTML = '';
+        if (!messages || messages.length === 0) {
+            ui.messagesContainer.innerHTML = '<p class="text-center text-gray-500">No messages yet. Start the conversation!</p>';
+            return;
+        }
+        messages.forEach(appendMessage);
+        scrollToBottom();
+    }
+
+    function appendMessage(msg) {
+        const bubble = document.createElement('div');
+        const isSent = msg.sender_id === currentUser.id;
+        bubble.className = `max-w-xl p-3 rounded-lg ${isSent ? 'chat-bubble-sent self-end' : 'chat-bubble-received self-start'}`;
+        
+        let contentHtml = '';
+        if (msg.content) {
+            contentHtml += `<p class="mb-2">${escapeHtml(msg.content)}</p>`;
+        }
+
+        if (msg.file_url) {
+            // Check if the file is an image by its name (a simple approach)
+            const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(msg.file_name);
+            if (isImage) {
+                contentHtml += `<img src="${msg.file_url}" alt="Attachment" class="max-w-xs rounded-lg my-2">`;
+            }
+            // Always provide a link to the file
+            contentHtml += `<a href="${msg.file_url}" target="_blank" class="${isSent ? 'text-white' : 'text-blue-600'} underline">${msg.file_name || 'View Attachment'}</a>`;
+        }
+
+        bubble.innerHTML = contentHtml;
+
+        // If there was no file and no text, we might want to have a default message
+        if (!msg.content && !msg.file_url) {
+            bubble.textContent = '[Empty Message]';
+        }
+
+        ui.messagesContainer.appendChild(bubble);
+    }
+
+    function toggleComposeView() {
+        if (ui.composeModal.classList.contains('is-open')) {
+            hideComposeView();
+        } else {
+            hideComposeView(false); 
+            ui.composeModal.classList.add('is-open');
+            ui.composeBtnIcon.classList.replace('fa-plus', 'fa-times');
+            ui.floatingComposeBtn.classList.add('rotate-45');
+            ui.recipientEmail.focus();
+        }
+    }
+    
+    function hideComposeView(resetIcon = true) {
+        ui.composeModal.classList.remove('is-open');
+        if (resetIcon) {
+            ui.composeBtnIcon.classList.replace('fa-times', 'fa-plus');
+            ui.floatingComposeBtn.classList.remove('rotate-45');
+        }
+        ui.composeError.classList.add('hidden');
+        ui.recipientEmail.value = '';
+        ui.composeMessage.value = '';
+        validateComposeForm();
+    }
+    
+    function validateComposeForm() {
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ui.recipientEmail.value.trim());
+        const hasContent = ui.composeMessage.value.trim() !== '';
+        ui.sendMessageBtn.disabled = !isValidEmail || !hasContent;
+    }
+
+    async function handleComposeAndSend() {
+        const recipient_email = ui.recipientEmail.value.trim();
+        const content = ui.composeMessage.value.trim();
+
+        setSendingState(true);
+        try {
+            const result = await api('/api/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ recipient_email, content }),
+            });
+            hideComposeView();
+            await refreshConversations();
+            // Use the conversations array that was just refreshed
+            const newConvo = conversations.find(c => c.id === result.conversation_id);
+            if (newConvo) handleConversationSelect(newConvo);
+
+        } catch (error) {
+            ui.composeError.textContent = error.message;
+            ui.composeError.classList.remove('hidden');
+        } finally {
+            setSendingState(false);
+        }
+    }
+
+    // Send message OR file
+    async function handleSendClick() { // Renamed from handleReply
+        const text = ui.messageInput.value.trim();
+
+        if (!text && !selectedFile) {
+            alert("Message or file required");
+            return;
+        }
+
+        try {
+            // ✅ Send file first (if exists)
+            if (selectedFile) {
+                const formData = new FormData();
+                formData.append("conversation_id", activeConversationId);
+                formData.append("file", selectedFile);
+                
+                // If there's also text, append it to the same form data
+                if (text) {
+                    formData.append("content", text);
+                }
+
+                const uploadRes = await fetch("/api/upload-attachment", {
+                    method: "POST",
+                    body: formData,
+                    credentials: "same-origin" // Ensure credentials are sent
+                });
+
+                const uploadData = await uploadRes.json();
+                if (!uploadRes.ok) {
+                    alert(uploadData.error || "File upload failed");
+                    return;
+                }
+
+                // Reset file state
+                selectedFile = null;
+                ui.fileInput.value = "";
+                ui.filePreview.classList.add("hidden");
+                ui.filePreview.innerHTML = "";
+            }
+
+            // ✅ Send text message (if exists AND no file was sent with it)
+            // This ensures text is only sent once, either with the file or separately.
+            if (text && !selectedFile) {
+                const res = await fetch("/api/send-message", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        content: text,
+                        conversation_id: activeConversationId
+                    }),
+                    credentials: "same-origin" // Ensure credentials are sent
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || "Message failed");
+                    return;
+                }
+            }
+
+            // Clear message input regardless of file or text
+            ui.messageInput.value = "";
+            // Refresh chat safely
+            refreshMessagesForSelectedConversation(false);
+
+        } catch (err) {
+            console.error(err);
+            alert("Unexpected error");
+        }
+    }
+
+    async function handleConversationSelect(convo) {
+        activeConversationId = convo.id; // Updated from selectedConversation
+        renderConversations(ui.searchInput.value.toLowerCase());
+        ui.conversationHeader.textContent = convo.other_user_email;
+        ui.messagesContainer.innerHTML = '<div class="spinner mx-auto mt-8"></div>';
+        switchView('conversationView');
+        await refreshMessagesForSelectedConversation();
+    }
+
+    function setSendingState(isSending) {
+        ui.sendMessageBtn.disabled = isSending;
+        ui.sendBtnText.classList.toggle('hidden', isSending);
+        ui.sendBtnSpinner.classList.toggle('hidden', !isSending);
+    }
+    function scrollToBottom() { ui.messagesContainer.scrollTop = ui.messagesContainer.scrollHeight; }
+    function escapeHtml(text) {
+        if (text === null || text === undefined) {
+            return '';
+        }
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    function formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.round(diffMs / 60000);
+        
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m`;
+        if (now.getDate() === date.getDate()) return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        return date.toLocaleDateString([], {month: 'short', day: 'numeric'});
+    }
+    
+    initialize();
+});
+</script>
+</body>
+</html>
